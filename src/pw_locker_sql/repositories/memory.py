@@ -13,6 +13,8 @@ from pw_locker_sql.errors import (
     CredentialNotFoundError,
     RepositoryError,
     ValidationError,
+    VaultAlreadyInitializedError,
+    VaultNotInitializedError,
 )
 
 
@@ -31,13 +33,15 @@ class InMemoryCredentialRepository:
     def get_vault_metadata(self) -> VaultMetadata:
         self._ensure_open()
         if self._vault_metadata is None:
-            raise RepositoryError()
+            raise VaultNotInitializedError()
         return self._vault_metadata
 
     def initialize_vault_metadata(self, metadata: VaultMetadata) -> None:
         self._ensure_open()
-        if not isinstance(metadata, VaultMetadata) or self._vault_metadata is not None:
+        if not isinstance(metadata, VaultMetadata):
             raise RepositoryError()
+        if self._vault_metadata is not None:
+            raise VaultAlreadyInitializedError()
         self._vault_metadata = metadata
 
     def get(self, credential_id: CredentialId) -> EncryptedCredentialRecord:

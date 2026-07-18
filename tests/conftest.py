@@ -47,8 +47,12 @@ def record_factory(fixed_time: datetime, envelope: EncryptedEnvelope):
 def vault_metadata(fixed_time: datetime, envelope: EncryptedEnvelope) -> VaultMetadata:
     return VaultMetadata(
         vault_id=UUID("00000000-0000-0000-0000-000000000001"),
-        created_at=fixed_time,
-        key_derivation_algorithm="SYNTHETIC_KDF_PLACEHOLDER",
+        key_derivation_algorithm="argon2id",
+        key_derivation_version=19,
+        key_derivation_memory_cost=8192,
+        key_derivation_time_cost=1,
+        key_derivation_parallelism=1,
+        derived_key_length=32,
         key_derivation_salt=b"SYNTHETIC_SALT",
         wrapped_data_encryption_key=envelope,
     )

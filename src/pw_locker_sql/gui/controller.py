@@ -8,11 +8,15 @@ from typing import Generic, TypeVar
 
 from pw_locker_sql.domain import CredentialMetadata
 from pw_locker_sql.errors import (
+    AuthenticationError,
     CredentialAlreadyExistsError,
     CredentialNotFoundError,
+    CryptographicOperationError,
     CryptographicProviderUnavailableError,
+    InvalidMasterPasswordError,
     PasswordLockerError,
     RepositoryError,
+    UnsupportedFormatError,
     ValidationError,
     VaultLockedError,
 )
@@ -39,11 +43,14 @@ class VaultController:
     def state(self) -> VaultState:
         return self._service.state
 
-    def initialize(self) -> ControllerResult[None]:
-        return self._run(self._service.initialize, "Vault initialized.")
+    def initialize(self, master_password: str) -> ControllerResult[None]:
+        return self._run(
+            lambda: self._service.initialize(master_password),
+            "Vault initialized.",
+        )
 
-    def unlock(self) -> ControllerResult[None]:
-        return self._run(self._service.unlock, "Vault unlocked.")
+    def unlock(self, master_password: str) -> ControllerResult[None]:
+        return self._run(lambda: self._service.unlock(master_password), "Vault unlocked.")
 
     def lock(self) -> ControllerResult[None]:
         if self._closed:
@@ -94,6 +101,12 @@ class VaultController:
 def _safe_message(error: Exception) -> str:
     if isinstance(error, CryptographicProviderUnavailableError):
         return "Operation unavailable until a cryptographic provider is configured."
+    if isinstance(error, (InvalidMasterPasswordError, AuthenticationError)):
+        return "Encrypted data authentication failed."
+    if isinstance(error, CryptographicOperationError):
+        return "The secure operation could not be completed."
+    if isinstance(error, UnsupportedFormatError):
+        return "The encrypted data format is not supported."
     if isinstance(error, VaultLockedError):
         return "Unlock the vault before continuing."
     if isinstance(error, CredentialNotFoundError):
@@ -101,7 +114,7 @@ def _safe_message(error: Exception) -> str:
     if isinstance(error, CredentialAlreadyExistsError):
         return "Credential already exists."
     if isinstance(error, ValidationError):
-        return "Check the supplied account information."
+        return "Check the supplied input."
     if isinstance(error, RepositoryError):
         return "Encrypted storage is unavailable."
     if isinstance(error, PasswordLockerError):

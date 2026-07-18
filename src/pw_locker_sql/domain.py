@@ -108,8 +108,12 @@ class VaultMetadata:
     """Non-secret vault format and wrapped-key metadata."""
 
     vault_id: UUID
-    created_at: datetime
     key_derivation_algorithm: str
+    key_derivation_version: int
+    key_derivation_memory_cost: int
+    key_derivation_time_cost: int
+    key_derivation_parallelism: int
+    derived_key_length: int
     key_derivation_salt: bytes = field(repr=False)
     wrapped_data_encryption_key: EncryptedEnvelope = field(repr=False)
     format_version: int = CURRENT_VAULT_VERSION
@@ -119,9 +123,17 @@ class VaultMetadata:
             raise UnsupportedFormatError()
         if not isinstance(self.vault_id, UUID):
             raise ValidationError()
-        _validate_aware_datetime(self.created_at)
         if not self.key_derivation_algorithm.strip():
             raise ValidationError()
+        for value in (
+            self.key_derivation_version,
+            self.key_derivation_memory_cost,
+            self.key_derivation_time_cost,
+            self.key_derivation_parallelism,
+            self.derived_key_length,
+        ):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValidationError()
         object.__setattr__(self, "key_derivation_salt", _immutable_bytes(self.key_derivation_salt))
         if not isinstance(self.wrapped_data_encryption_key, EncryptedEnvelope):
             raise ValidationError()

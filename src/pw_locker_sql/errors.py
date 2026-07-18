@@ -61,3 +61,33 @@ class CryptographicProviderUnavailableError(PasswordLockerError):
     default_message = (
         "This operation is not available until a cryptographic provider is configured."
     )
+
+
+class InvalidMasterPasswordError(PasswordLockerError):
+    """Raised when vault-key authentication cannot be completed."""
+
+    default_message = "Vault authentication failed."
+
+
+class AuthenticationError(PasswordLockerError):
+    """Raised when encrypted credential authentication cannot be completed."""
+
+    default_message = "Encrypted data authentication failed."
+
+
+class CryptographicOperationError(PasswordLockerError):
+    """Raised for safe translation of lower-level cryptographic failures."""
+
+    default_message = "The cryptographic operation failed."
+
+
+class VaultNotInitializedError(RepositoryError):
+    """Raised when encrypted vault metadata does not exist."""
+
+    default_message = "The vault is not initialized."
+
+
+class VaultAlreadyInitializedError(RepositoryError):
+    """Raised when initialization would replace vault metadata."""
+
+    default_message = "The vault is already initialized."

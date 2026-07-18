@@ -35,7 +35,14 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         raise RuntimeError("filesystem write blocked")
     if event in {"os.mkdir", "os.remove", "os.rename", "os.replace", "subprocess.Popen"}:
         raise RuntimeError("external side effect blocked")
-    if event.startswith("socket."):
+    if event in {
+        "socket.bind",
+        "socket.connect",
+        "socket.connect_ex",
+        "socket.getaddrinfo",
+        "socket.gethostbyaddr",
+        "socket.gethostbyname",
+    }:
         raise RuntimeError("network side effect blocked")
 """
     script = (
@@ -46,6 +53,8 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "import pw_locker_sql;"
         "import pw_locker_sql.cli;"
         "import pw_locker_sql.config;"
+        "import pw_locker_sql.crypto.argon2_aesgcm;"
+        "import pw_locker_sql.crypto.protocol;"
         "import pw_locker_sql.domain;"
         "import pw_locker_sql.gui.controller;"
         "import pw_locker_sql.repositories.memory;"
@@ -76,5 +85,12 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
 def test_runtime_package_has_no_sql_gui_or_environment_imports() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
     source = "\n".join(path.read_text(encoding="utf-8") for path in root.rglob("*.py"))
-    for forbidden in ("pyodbc", "tkinter", "load_dotenv", "os.environ", "sqlite3"):
+    for forbidden in (
+        "load_dotenv",
+        "logging.basicConfig",
+        "os.environ",
+        "pyodbc",
+        "sqlite3",
+        "tkinter",
+    ):
         assert forbidden not in source

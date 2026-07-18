@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from typing import NoReturn
 
+from pw_locker_sql.crypto.protocol import UnlockedVaultSession
 from pw_locker_sql.domain import CredentialId, EncryptedCredentialRecord
 from pw_locker_sql.errors import CryptographicProviderUnavailableError
 from pw_locker_sql.gui.controller import ControllerResult, VaultController
 from pw_locker_sql.repositories.memory import InMemoryCredentialRepository
-from pw_locker_sql.services import UnlockedVaultSession, VaultService, VaultState
+from pw_locker_sql.services import VaultService, VaultState
+
+MASTER_PASSWORD_PLACEHOLDER = "MASTER_PASSWORD_PLACEHOLDER"
 
 
 class StateOnlySession:
@@ -33,17 +36,27 @@ class StateOnlyProvider:
         self.sessions.append(session)
         return session
 
-    def initialize(self) -> tuple[object, UnlockedVaultSession]:
+    def initialize(self, master_password: str) -> tuple[object, UnlockedVaultSession]:
         return self.vault_metadata, self._session()  # type: ignore[return-value]
 
-    def unlock(self, metadata: object) -> UnlockedVaultSession:
+    def unlock(self, metadata: object, master_password: str) -> UnlockedVaultSession:
         return self._session()
 
 
+class UnavailableProvider:
+    def initialize(self, master_password: str) -> NoReturn:
+        raise CryptographicProviderUnavailableError()
+
+    def unlock(self, metadata: object, master_password: str) -> NoReturn:
+        raise CryptographicProviderUnavailableError()
+
+
 def test_controller_starts_locked_and_missing_provider_fails_safely() -> None:
-    controller = VaultController(VaultService(InMemoryCredentialRepository()))
+    controller = VaultController(
+        VaultService(InMemoryCredentialRepository(), UnavailableProvider())  # type: ignore[arg-type]
+    )
     assert controller.state is VaultState.LOCKED
-    result = controller.unlock()
+    result = controller.initialize(MASTER_PASSWORD_PLACEHOLDER)
     assert result.ok is False
     assert result.message == "Operation unavailable until a cryptographic provider is configured."
 
@@ -53,12 +66,12 @@ def test_initialize_unlock_lock_transitions(vault_metadata) -> None:
     controller = VaultController(
         VaultService(InMemoryCredentialRepository(), provider)  # type: ignore[arg-type]
     )
-    assert controller.initialize().ok is True
+    assert controller.initialize(MASTER_PASSWORD_PLACEHOLDER).ok is True
     assert controller.state is VaultState.UNLOCKED
     assert controller.lock().ok is True
     assert controller.state is VaultState.LOCKED
     assert provider.sessions[0].closed is True
-    assert controller.unlock().ok is True
+    assert controller.unlock(MASTER_PASSWORD_PLACEHOLDER).ok is True
     assert controller.state is VaultState.UNLOCKED
 
 
@@ -67,7 +80,7 @@ def test_operations_requiring_crypto_fail_without_placeholder_security(vault_met
     controller = VaultController(
         VaultService(InMemoryCredentialRepository(), provider)  # type: ignore[arg-type]
     )
-    assert controller.initialize().ok is True
+    assert controller.initialize(MASTER_PASSWORD_PLACEHOLDER).ok is True
     result = controller.set_credential("ACCOUNT_PLACEHOLDER", "PLAINTEXT_PLACEHOLDER")
     assert result.ok is False
     assert "cryptographic provider" in result.message
@@ -81,7 +94,7 @@ def test_locked_operation_and_missing_record_have_safe_messages(vault_metadata) 
     )
     locked = controller.get_credential("ACCOUNT_PLACEHOLDER")
     assert locked.message == "Unlock the vault before continuing."
-    assert controller.initialize().ok is True
+    assert controller.initialize(MASTER_PASSWORD_PLACEHOLDER).ok is True
     missing = controller.get_credential("ACCOUNT_PLACEHOLDER")
     assert missing.message == "Credential not found."
 

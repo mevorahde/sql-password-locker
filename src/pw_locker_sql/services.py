@@ -5,20 +5,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Protocol
 
+from pw_locker_sql.crypto.protocol import UnlockedVaultSession, VaultCryptographicProvider
 from pw_locker_sql.domain import (
     CredentialId,
     CredentialMetadata,
     EncryptedCredentialRecord,
-    EncryptedEnvelope,
-    VaultMetadata,
 )
 from pw_locker_sql.errors import (
     CredentialNotFoundError,
-    CryptographicProviderUnavailableError,
     PasswordLockerError,
+    VaultAlreadyInitializedError,
     VaultLockedError,
+    VaultNotInitializedError,
 )
 from pw_locker_sql.repositories.protocol import CredentialRepository
 
@@ -28,35 +27,13 @@ class VaultState(str, Enum):
     UNLOCKED = "unlocked"
 
 
-class UnlockedVaultSession(Protocol):
-    """Future in-memory cryptographic session; never implemented by persistence."""
-
-    def encrypt_credential(
-        self,
-        credential_id: CredentialId,
-        plaintext: str,
-    ) -> EncryptedEnvelope: ...
-
-    def decrypt_credential(self, record: EncryptedCredentialRecord) -> str: ...
-
-    def close(self) -> None: ...
-
-
-class VaultCryptographicProvider(Protocol):
-    """Future provider configured with an out-of-band master-secret source."""
-
-    def initialize(self) -> tuple[VaultMetadata, UnlockedVaultSession]: ...
-
-    def unlock(self, metadata: VaultMetadata) -> UnlockedVaultSession: ...
-
-
 class VaultService:
-    """Coordinates state and encrypted persistence without implementing cryptography."""
+    """Coordinates unlocked cryptography and encrypted persistence."""
 
     def __init__(
         self,
         repository: CredentialRepository,
-        cryptographic_provider: VaultCryptographicProvider | None = None,
+        cryptographic_provider: VaultCryptographicProvider,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
@@ -70,10 +47,15 @@ class VaultService:
     def state(self) -> VaultState:
         return self._state
 
-    def initialize(self) -> None:
+    def initialize(self, master_password: str) -> None:
         self._ensure_open()
-        provider = self._require_provider()
-        metadata, session = provider.initialize()
+        try:
+            self._repository.get_vault_metadata()
+        except VaultNotInitializedError:
+            pass
+        else:
+            raise VaultAlreadyInitializedError()
+        metadata, session = self._provider.initialize(master_password)
         try:
             self._repository.initialize_vault_metadata(metadata)
         except Exception:
@@ -82,13 +64,12 @@ class VaultService:
         self._session = session
         self._state = VaultState.UNLOCKED
 
-    def unlock(self) -> None:
+    def unlock(self, master_password: str) -> None:
         self._ensure_open()
         if self._state is VaultState.UNLOCKED:
             return
-        provider = self._require_provider()
         metadata = self._repository.get_vault_metadata()
-        self._session = provider.unlock(metadata)
+        self._session = self._provider.unlock(metadata, master_password)
         self._state = VaultState.UNLOCKED
 
     def lock(self) -> None:
@@ -139,11 +120,6 @@ class VaultService:
     def _ensure_open(self) -> None:
         if self._closed:
             raise PasswordLockerError()
-
-    def _require_provider(self) -> VaultCryptographicProvider:
-        if self._provider is None:
-            raise CryptographicProviderUnavailableError()
-        return self._provider
 
     def _require_session(self) -> UnlockedVaultSession:
         self._ensure_open()
