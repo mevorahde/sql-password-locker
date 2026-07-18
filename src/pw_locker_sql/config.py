@@ -24,6 +24,7 @@ class SecretValue:
     def __post_init__(self) -> None:
         if not isinstance(self._value, str) or not self._value:
             raise ConfigurationError()
+        _reject_control_characters(self._value)
 
     def get_secret_value(self) -> str:
         """Return the value only to a future connection factory."""
@@ -38,7 +39,7 @@ class SecretValue:
 
 @dataclass(frozen=True, slots=True)
 class SQLServerConfig:
-    """Validated settings for a future SQL Server repository."""
+    """Validated settings for a secure SQL Server connection factory."""
 
     odbc_driver: str = field(repr=False)
     server: str = field(repr=False)
@@ -50,16 +51,45 @@ class SQLServerConfig:
     trust_server_certificate: bool = False
     connection_timeout: int = 15
 
+    def __post_init__(self) -> None:
+        for value in (self.odbc_driver, self.server, self.database):
+            if not isinstance(value, str) or not value:
+                raise ConfigurationError()
+            _validate_public_odbc_value(value)
+        if self.authentication_mode is AuthenticationMode.WINDOWS_INTEGRATED:
+            if self.username is not None or self.password is not None:
+                raise ConfigurationError()
+        elif self.authentication_mode is AuthenticationMode.SQL:
+            if not isinstance(self.username, str) or not self.username:
+                raise ConfigurationError()
+            _validate_public_odbc_value(self.username)
+            if not isinstance(self.password, SecretValue):
+                raise ConfigurationError()
+        else:
+            raise ConfigurationError()
+        if not self.encrypt or self.trust_server_certificate:
+            raise ConfigurationError()
+        if (
+            not isinstance(self.connection_timeout, int)
+            or isinstance(self.connection_timeout, bool)
+            or not 1 <= self.connection_timeout <= 120
+        ):
+            raise ConfigurationError()
+
     @classmethod
     def from_mapping(cls, values: Mapping[str, str]) -> SQLServerConfig:
-        required = tuple(_required(values, key) for key in ("ODBC_DRIVER", "SERVER", "DATABASE"))
+        driver = _optional(values, "ODBC_DRIVER") or "ODBC Driver 18 for SQL Server"
+        server = _required(values, "SERVER")
+        database = _required(values, "DATABASE")
+        for value in (driver, server, database):
+            _validate_public_odbc_value(value)
         try:
             mode = AuthenticationMode(_required(values, "AUTH_MODE").strip().casefold())
         except ValueError as error:
             raise ConfigurationError() from error
 
         username = _optional(values, "USERNAME")
-        raw_password = _optional(values, "PASSWORD")
+        raw_password = _secret_optional(values, "PASSWORD")
         if mode is AuthenticationMode.WINDOWS_INTEGRATED:
             if username is not None or raw_password is not None:
                 raise ConfigurationError()
@@ -67,15 +97,18 @@ class SQLServerConfig:
         else:
             if username is None or raw_password is None:
                 raise ConfigurationError()
+            _validate_public_odbc_value(username)
             password = SecretValue(raw_password)
 
         encrypt = _parse_bool(values, "ENCRYPT", default=True)
         trust_certificate = _parse_bool(values, "TRUST_SERVER_CERTIFICATE", default=False)
+        if not encrypt or trust_certificate:
+            raise ConfigurationError()
         timeout = _parse_timeout(values.get("CONNECTION_TIMEOUT", "15"))
         return cls(
-            odbc_driver=required[0],
-            server=required[1],
-            database=required[2],
+            odbc_driver=driver,
+            server=server,
+            database=database,
             authentication_mode=mode,
             username=username,
             password=password,
@@ -116,6 +149,27 @@ def _optional(values: Mapping[str, str], key: str) -> str | None:
         raise ConfigurationError()
     stripped = value.strip()
     return stripped or None
+
+
+def _secret_optional(values: Mapping[str, str], key: str) -> str | None:
+    value = values.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ConfigurationError()
+    _reject_control_characters(value)
+    return value
+
+
+def _validate_public_odbc_value(value: str) -> None:
+    _reject_control_characters(value)
+    if ";" in value:
+        raise ConfigurationError()
+
+
+def _reject_control_characters(value: str) -> None:
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ConfigurationError()
 
 
 def _parse_bool(values: Mapping[str, str], key: str, *, default: bool) -> bool:

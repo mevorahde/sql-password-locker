@@ -91,3 +91,15 @@ class VaultAlreadyInitializedError(RepositoryError):
     """Raised when initialization would replace vault metadata."""
 
     default_message = "The vault is already initialized."
+
+
+class SchemaMigrationError(RepositoryError):
+    """Raised when schema state or migration execution is invalid."""
+
+    default_message = "The database schema operation failed."
+
+
+class UnsupportedSchemaVersionError(RepositoryError):
+    """Raised when a database schema is newer than this application."""
+
+    default_message = "The database schema version is not supported."

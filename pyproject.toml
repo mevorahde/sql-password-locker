@@ -11,6 +11,7 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "argon2-cffi>=25.1,<26",
     "cryptography>=49,<50",
+    "pyodbc>=5.3,<6",
 ]
 
 [project.optional-dependencies]
@@ -29,10 +30,16 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"pw_locker_sql.schema.migrations" = ["*.sql"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "sqlserver_integration: requires an explicitly configured SQL Server test database",
+]
 
 [tool.ruff]
 line-length = 100

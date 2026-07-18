@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -58,7 +59,10 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "import pw_locker_sql.domain;"
         "import pw_locker_sql.gui.controller;"
         "import pw_locker_sql.repositories.memory;"
+        "import pw_locker_sql.repositories.sql_server;"
+        "import pw_locker_sql.schema.manager;"
         "import pw_locker_sql.services"
+        ";assert 'pyodbc' not in sys.modules"
     )
     environment = {
         "PATH": os.environ.get("PATH", ""),
@@ -82,15 +86,25 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     assert application_artifacts == []
 
 
-def test_runtime_package_has_no_sql_gui_or_environment_imports() -> None:
+def test_runtime_package_has_no_gui_or_environment_imports() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
     source = "\n".join(path.read_text(encoding="utf-8") for path in root.rglob("*.py"))
     for forbidden in (
         "load_dotenv",
         "logging.basicConfig",
         "os.environ",
-        "pyodbc",
         "sqlite3",
         "tkinter",
     ):
         assert forbidden not in source
+
+
+def test_pyodbc_is_only_loaded_lazily() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                assert all(alias.name != "pyodbc" for alias in node.names)
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "pyodbc"

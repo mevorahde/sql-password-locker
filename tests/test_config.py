@@ -27,6 +27,13 @@ def test_integrated_authentication_configuration() -> None:
     assert config.password is None
 
 
+def test_odbc_driver_18_is_the_default() -> None:
+    values = dict(INTEGRATED_PLACEHOLDERS)
+    del values["ODBC_DRIVER"]
+    config = SQLServerConfig.from_mapping(values)
+    assert config.odbc_driver == "ODBC Driver 18 for SQL Server"
+
+
 def test_sql_authentication_configuration() -> None:
     config = SQLServerConfig.from_mapping(SQL_AUTH_PLACEHOLDERS)
     assert config.authentication_mode is AuthenticationMode.SQL
@@ -35,7 +42,7 @@ def test_sql_authentication_configuration() -> None:
     assert config.password.get_secret_value() == "PASSWORD_PLACEHOLDER"
 
 
-@pytest.mark.parametrize("missing", ["ODBC_DRIVER", "SERVER", "DATABASE", "AUTH_MODE"])
+@pytest.mark.parametrize("missing", ["SERVER", "DATABASE", "AUTH_MODE"])
 def test_missing_required_setting_is_rejected(missing: str) -> None:
     values = dict(INTEGRATED_PLACEHOLDERS)
     del values[missing]
@@ -69,6 +76,42 @@ def test_invalid_boolean_and_timeout_are_rejected() -> None:
     with pytest.raises(ConfigurationError):
         SQLServerConfig.from_mapping(
             {**INTEGRATED_PLACEHOLDERS, "CONNECTION_TIMEOUT": "999"}
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("ENCRYPT", "false"), ("TRUST_SERVER_CERTIFICATE", "true")],
+)
+def test_secure_transport_cannot_be_weakened(key: str, value: str) -> None:
+    with pytest.raises(ConfigurationError):
+        SQLServerConfig.from_mapping({**INTEGRATED_PLACEHOLDERS, key: value})
+
+
+@pytest.mark.parametrize("key", ["ODBC_DRIVER", "SERVER", "DATABASE", "USERNAME"])
+@pytest.mark.parametrize("suffix", [";Injected=Yes", "\x00tail", "\ntail"])
+def test_public_odbc_attributes_reject_injection_and_controls(
+    key: str,
+    suffix: str,
+) -> None:
+    values = dict(SQL_AUTH_PLACEHOLDERS)
+    values[key] = values[key] + suffix
+    with pytest.raises(ConfigurationError):
+        SQLServerConfig.from_mapping(values)
+
+
+def test_sql_password_preserves_odbc_punctuation() -> None:
+    marker = "SYNTHETIC password;with}braces!"
+    config = SQLServerConfig.from_mapping({**SQL_AUTH_PLACEHOLDERS, "PASSWORD": marker})
+    assert config.password is not None
+    assert config.password.get_secret_value() == marker
+
+
+@pytest.mark.parametrize("suffix", ["\x00tail", "\ntail", "\x7ftail"])
+def test_sql_password_rejects_control_characters(suffix: str) -> None:
+    with pytest.raises(ConfigurationError):
+        SQLServerConfig.from_mapping(
+            {**SQL_AUTH_PLACEHOLDERS, "PASSWORD": "SYNTHETIC_PASSWORD" + suffix}
         )
 
 

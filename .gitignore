@@ -136,6 +136,7 @@ dmypy.json
 *Db.*
 
 /users.db
+*.db
 *.db-wal
 *.db-shm
 *.db-journal
@@ -150,6 +151,7 @@ dmypy.json
 /file.bin
 /ev.bin
 *.sql
+!src/pw_locker_sql/schema/migrations/*.sql
 *.exe
 *.msi
 .idea/

@@ -14,6 +14,30 @@ from pw_locker_sql.domain import (
 )
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("sqlserver-integration")
+    group.addoption(
+        "--run-sqlserver-integration",
+        action="store_true",
+        default=False,
+        help="run explicitly configured SQL Server integration tests",
+    )
+    group.addoption(
+        "--sqlserver-test-database",
+        default=None,
+        help="explicit test-only database designation for integration tests",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--run-sqlserver-integration"):
+        return
+    skip = pytest.mark.skip(reason="requires explicit SQL Server integration opt-in")
+    for item in items:
+        if "sqlserver_integration" in item.keywords:
+            item.add_marker(skip)
+
+
 @pytest.fixture
 def fixed_time() -> datetime:
     return datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc)
