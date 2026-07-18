@@ -77,6 +77,14 @@ class VaultService:
         self._session = self._provider.unlock(metadata, master_password)
         self._state = VaultState.UNLOCKED
 
+    def is_initialized(self) -> bool:
+        self._ensure_open()
+        try:
+            self._repository.get_vault_metadata()
+        except VaultNotInitializedError:
+            return False
+        return True
+
     def lock(self) -> None:
         if self._session is not None:
             self._session.close()

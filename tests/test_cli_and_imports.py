@@ -87,6 +87,11 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "import pw_locker_sql.crypto.protocol;"
         "import pw_locker_sql.domain;"
         "import pw_locker_sql.gui.controller;"
+        "import pw_locker_sql.gui.app;"
+        "import pw_locker_sql.gui.icon;"
+        "import pw_locker_sql.gui.operations;"
+        "import pw_locker_sql.gui.presenter;"
+        "import pw_locker_sql.gui.view;"
         "import pw_locker_sql.repositories.memory;"
         "import pw_locker_sql.repositories.sql_server;"
         "import pw_locker_sql.prompting;"
@@ -126,9 +131,14 @@ def test_runtime_package_has_no_gui_or_implicit_environment_loading() -> None:
         "load_dotenv",
         "logging.basicConfig",
         "sqlite3",
-        "tkinter",
     ):
         assert forbidden not in source
+    non_gui_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+        if "gui" not in path.parts
+    )
+    assert "tkinter" not in non_gui_source
 
 
 def test_pyodbc_is_only_loaded_lazily() -> None:

@@ -20,7 +20,7 @@ from pw_locker_sql.errors import (
     ValidationError,
     VaultLockedError,
 )
-from pw_locker_sql.services import VaultService, VaultState
+from pw_locker_sql.services import CredentialWriteResult, VaultService, VaultState
 
 T = TypeVar("T")
 
@@ -52,13 +52,20 @@ class VaultController:
     def unlock(self, master_password: str) -> ControllerResult[None]:
         return self._run(lambda: self._service.unlock(master_password), "Vault unlocked.")
 
+    def is_initialized(self) -> ControllerResult[bool]:
+        return self._run_value(self._service.is_initialized, "Vault state checked.")
+
     def lock(self) -> ControllerResult[None]:
         if self._closed:
             return ControllerResult(True, "Vault is closed.")
         return self._run(self._service.lock, "Vault locked.")
 
-    def set_credential(self, account: str, plaintext: str) -> ControllerResult[None]:
-        return self._run(
+    def set_credential(
+        self,
+        account: str,
+        plaintext: str,
+    ) -> ControllerResult[CredentialWriteResult]:
+        return self._run_value(
             lambda: self._service.set_credential(account, plaintext),
             "Credential saved.",
         )
