@@ -14,19 +14,45 @@ from pw_locker_sql import cli
 def test_cli_help_has_no_external_requirements(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["--help"]) == cli.EXIT_OK
     output = capsys.readouterr()
-    assert "SQL Server Password Locker foundation" in output.out
+    assert "Client-side encrypted SQL Server password vault" in output.out
     assert output.err == ""
 
 
-@pytest.mark.parametrize("command", ["initialize", "unlock", "list", "get", "set", "delete"])
-def test_operational_commands_fail_safely(
-    command: str,
+def test_no_command_prints_help_without_loading_configuration(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert cli.main([command]) == cli.EXIT_UNAVAILABLE
+    assert cli.main([]) == cli.EXIT_OK
     output = capsys.readouterr()
-    assert output.out == ""
-    assert "providers are configured" in output.err
+    assert "check-config" in output.out
+    assert output.err == ""
+
+
+def test_help_does_not_import_production_integrations(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "src"
+    script = (
+        "import sys;"
+        f"sys.path.insert(0, {str(source)!r});"
+        "from pw_locker_sql import cli;"
+        "assert cli.main(['--help']) == 0;"
+        "forbidden = {'argon2', 'cryptography', 'dotenv', 'pyodbc', 'pyperclip'};"
+        "assert forbidden.isdisjoint(sys.modules)"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=tmp_path,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0
+    assert "check-config" in completed.stdout
+    assert completed.stderr == ""
 
 
 def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None:
@@ -34,6 +60,8 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     audit_guard = """def guard(event, args):
     if event == "open" and isinstance(args[1], str) and any(flag in args[1] for flag in "wax+"):
         raise RuntimeError("filesystem write blocked")
+    if event == "open" and str(args[0]).lower().endswith((".env", ".db", ".log")):
+        raise RuntimeError("protected read blocked")
     if event in {"os.mkdir", "os.remove", "os.rename", "os.replace", "subprocess.Popen"}:
         raise RuntimeError("external side effect blocked")
     if event in {
@@ -53,6 +81,7 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "sys.addaudithook(guard);"
         "import pw_locker_sql;"
         "import pw_locker_sql.cli;"
+        "import pw_locker_sql.clipboard;"
         "import pw_locker_sql.config;"
         "import pw_locker_sql.crypto.argon2_aesgcm;"
         "import pw_locker_sql.crypto.protocol;"
@@ -60,9 +89,13 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "import pw_locker_sql.gui.controller;"
         "import pw_locker_sql.repositories.memory;"
         "import pw_locker_sql.repositories.sql_server;"
+        "import pw_locker_sql.prompting;"
+        "import pw_locker_sql.runtime;"
         "import pw_locker_sql.schema.manager;"
         "import pw_locker_sql.services"
         ";assert 'pyodbc' not in sys.modules"
+        ";assert 'pyperclip' not in sys.modules"
+        ";assert 'dotenv' not in sys.modules"
     )
     environment = {
         "PATH": os.environ.get("PATH", ""),
@@ -86,13 +119,12 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     assert application_artifacts == []
 
 
-def test_runtime_package_has_no_gui_or_environment_imports() -> None:
+def test_runtime_package_has_no_gui_or_implicit_environment_loading() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
     source = "\n".join(path.read_text(encoding="utf-8") for path in root.rglob("*.py"))
     for forbidden in (
         "load_dotenv",
         "logging.basicConfig",
-        "os.environ",
         "sqlite3",
         "tkinter",
     ):

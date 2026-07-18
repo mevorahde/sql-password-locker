@@ -103,3 +103,21 @@ class UnsupportedSchemaVersionError(RepositoryError):
     """Raised when a database schema is newer than this application."""
 
     default_message = "The database schema version is not supported."
+
+
+class ClipboardError(PasswordLockerError):
+    """Raised when clipboard access cannot be completed safely."""
+
+    default_message = "The clipboard operation failed."
+
+
+class SecurePromptError(PasswordLockerError):
+    """Raised when a secret cannot be collected from an interactive terminal."""
+
+    default_message = "Secure interactive input is required."
+
+
+class PasswordConfirmationError(PasswordLockerError):
+    """Raised when two secret prompt results do not match."""
+
+    default_message = "Password confirmation did not match."

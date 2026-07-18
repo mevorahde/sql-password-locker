@@ -83,7 +83,7 @@ class VaultController:
             self._closed = True
         return result
 
-    def _run(self, action: Callable[[], None], success: str) -> ControllerResult[None]:
+    def _run(self, action: Callable[[], object], success: str) -> ControllerResult[None]:
         try:
             action()
         except Exception as error:

@@ -11,8 +11,7 @@ from pw_locker_sql.errors import (
     UnsupportedSchemaVersionError,
 )
 from pw_locker_sql.repositories.sql_server import DbApiConnection, DbApiCursor
-
-CURRENT_SCHEMA_VERSION = 1
+from pw_locker_sql.schema.version import CURRENT_SCHEMA_VERSION
 
 DETECT_SCHEMA_OBJECTS_SQL = """
 SELECT

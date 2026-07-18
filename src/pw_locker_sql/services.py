@@ -27,6 +27,11 @@ class VaultState(str, Enum):
     UNLOCKED = "unlocked"
 
 
+class CredentialWriteResult(str, Enum):
+    CREATED = "created"
+    UPDATED = "updated"
+
+
 class VaultService:
     """Coordinates unlocked cryptography and encrypted persistence."""
 
@@ -78,7 +83,7 @@ class VaultService:
             self._session = None
         self._state = VaultState.LOCKED
 
-    def set_credential(self, account: str, plaintext: str) -> None:
+    def set_credential(self, account: str, plaintext: str) -> CredentialWriteResult:
         session = self._require_session()
         credential_id = CredentialId.from_account(account)
         envelope = session.encrypt_credential(credential_id, plaintext)
@@ -88,6 +93,7 @@ class VaultService:
         except CredentialNotFoundError:
             metadata = CredentialMetadata(credential_id, now, now)
             self._repository.insert(EncryptedCredentialRecord(metadata, envelope))
+            return CredentialWriteResult.CREATED
         else:
             metadata = CredentialMetadata(
                 credential_id,
@@ -96,6 +102,7 @@ class VaultService:
                 existing.metadata.revision + 1,
             )
             self._repository.update(EncryptedCredentialRecord(metadata, envelope))
+            return CredentialWriteResult.UPDATED
 
     def get_credential(self, account: str) -> str:
         session = self._require_session()
