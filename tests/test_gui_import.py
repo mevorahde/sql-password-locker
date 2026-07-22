@@ -20,22 +20,27 @@ def test_gui_imports_have_no_side_effects(tmp_path: Path) -> None:
     if event == "open" and isinstance(args[1], str) and any(flag in args[1] for flag in "wax+"):
         raise RuntimeError("filesystem write blocked")
     if event in {"socket.connect", "socket.bind", "subprocess.Popen"}:
-        raise RuntimeError("external side effect blocked")
+        raise RuntimeError(f"blocked audit event: {event}; import: {current_module}")
 """
+    modules = (
+        "pw_locker_sql.gui.app",
+        "pw_locker_sql.gui.controller",
+        "pw_locker_sql.gui.icon",
+        "pw_locker_sql.gui.operations",
+        "pw_locker_sql.gui.presenter",
+        "pw_locker_sql.gui.view",
+    )
     script = (
         "import sys, threading;"
         f"sys.path.insert(0, {str(source)!r});"
         "threading.Thread.start=lambda self: (_ for _ in ()).throw(RuntimeError('thread blocked'));"
+        "current_module='<audit setup>';"
         f"exec({guard!r});sys.addaudithook(guard);"
-        "import pw_locker_sql.gui.app;"
-        "import pw_locker_sql.gui.controller;"
         "import importlib.resources;"
         "importlib.resources.files=lambda *args: "
         "(_ for _ in ()).throw(RuntimeError('asset blocked'));"
-        "import pw_locker_sql.gui.icon;"
-        "import pw_locker_sql.gui.operations;"
-        "import pw_locker_sql.gui.presenter;"
-        "import pw_locker_sql.gui.view;"
+        f"modules={modules!r}"
+        "\nfor current_module in modules:\n    __import__(current_module)\n"
         "assert 'tkinter' not in sys.modules;"
         "assert 'dotenv' not in sys.modules;"
         "assert 'pyodbc' not in sys.modules;"

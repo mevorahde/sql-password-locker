@@ -15,11 +15,6 @@ from dataclasses import dataclass
 from typing import Final
 from uuid import UUID, uuid4
 
-from argon2.exceptions import HashingError
-from argon2.low_level import ARGON2_VERSION, Type, hash_secret_raw
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
 from pw_locker_sql.crypto.protocol import UnlockedVaultSession
 from pw_locker_sql.domain import (
     CURRENT_ENVELOPE_VERSION,
@@ -94,6 +89,8 @@ class Argon2idAesGcmProvider:
         self._uuid_factory = _uuid_factory or uuid4
 
     def initialize(self, master_password: str) -> tuple[VaultMetadata, UnlockedVaultSession]:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         _validate_master_password(master_password)
         parameters = self._new_vault_parameters
         _validate_parameters(parameters)
@@ -144,6 +141,10 @@ class Argon2idAesGcmProvider:
         metadata: VaultMetadata,
         master_password: str,
     ) -> UnlockedVaultSession:
+        from argon2.exceptions import HashingError
+        from cryptography.exceptions import InvalidTag
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         _validate_master_password(master_password)
         parameters = _parameters_from_metadata(metadata)
         envelope = metadata.wrapped_data_encryption_key
@@ -217,6 +218,8 @@ class AesGcmUnlockedSession:
         credential_id: CredentialId,
         plaintext: str,
     ) -> EncryptedEnvelope:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         self._ensure_open()
         if not isinstance(credential_id, CredentialId):
             raise ValidationError()
@@ -240,6 +243,9 @@ class AesGcmUnlockedSession:
         )
 
     def decrypt_credential(self, record: EncryptedCredentialRecord) -> str:
+        from cryptography.exceptions import InvalidTag
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         self._ensure_open()
         if not isinstance(record, EncryptedCredentialRecord):
             raise ValidationError()
@@ -297,6 +303,9 @@ def _derive_key(
     salt: bytes,
     parameters: Argon2idParameters,
 ) -> bytearray:
+    from argon2.exceptions import HashingError
+    from argon2.low_level import Type, hash_secret_raw
+
     try:
         derived = hash_secret_raw(
             secret=master_password.encode("utf-8"),
@@ -345,7 +354,7 @@ def _validate_parameters(parameters: Argon2idParameters) -> None:
     )
     if any(not isinstance(value, int) or isinstance(value, bool) for value in numeric_values):
         raise UnsupportedFormatError()
-    if parameters.version != ARGON2_VERSION or parameters.version != ARGON2ID_VERSION:
+    if parameters.version != ARGON2ID_VERSION:
         raise UnsupportedFormatError()
     if parameters.salt_length != SALT_LENGTH or parameters.output_length != KEY_LENGTH:
         raise UnsupportedFormatError()

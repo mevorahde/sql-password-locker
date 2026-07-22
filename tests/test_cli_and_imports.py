@@ -65,7 +65,7 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     if event == "open" and str(args[0]).lower().endswith((".env", ".db", ".log")):
         raise RuntimeError("protected read blocked")
     if event in {"os.mkdir", "os.remove", "os.rename", "os.replace", "subprocess.Popen"}:
-        raise RuntimeError("external side effect blocked")
+        raise RuntimeError(f"blocked audit event: {event}; import: {current_module}")
     if event in {
         "socket.bind",
         "socket.connect",
@@ -76,33 +76,40 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     }:
         raise RuntimeError("network side effect blocked")
 """
+    modules = (
+        "pw_locker_sql",
+        "pw_locker_sql.cli",
+        "pw_locker_sql.clipboard",
+        "pw_locker_sql.config",
+        "pw_locker_sql.crypto.argon2_aesgcm",
+        "pw_locker_sql.crypto.protocol",
+        "pw_locker_sql.domain",
+        "pw_locker_sql.gui.controller",
+        "pw_locker_sql.gui.app",
+        "pw_locker_sql.gui.icon",
+        "pw_locker_sql.gui.operations",
+        "pw_locker_sql.gui.presenter",
+        "pw_locker_sql.gui.view",
+        "pw_locker_sql.repositories.memory",
+        "pw_locker_sql.repositories.sql_server",
+        "pw_locker_sql.prompting",
+        "pw_locker_sql.runtime",
+        "pw_locker_sql.schema.manager",
+        "pw_locker_sql.services",
+    )
     script = (
         "import sys;"
         f"sys.path.insert(0, {str(source)!r});"
+        "current_module='<audit setup>';"
         f"exec({audit_guard!r});"
         "sys.addaudithook(guard);"
-        "import pw_locker_sql;"
-        "import pw_locker_sql.cli;"
-        "import pw_locker_sql.clipboard;"
-        "import pw_locker_sql.config;"
-        "import pw_locker_sql.crypto.argon2_aesgcm;"
-        "import pw_locker_sql.crypto.protocol;"
-        "import pw_locker_sql.domain;"
-        "import pw_locker_sql.gui.controller;"
-        "import pw_locker_sql.gui.app;"
-        "import pw_locker_sql.gui.icon;"
-        "import pw_locker_sql.gui.operations;"
-        "import pw_locker_sql.gui.presenter;"
-        "import pw_locker_sql.gui.view;"
-        "import pw_locker_sql.repositories.memory;"
-        "import pw_locker_sql.repositories.sql_server;"
-        "import pw_locker_sql.prompting;"
-        "import pw_locker_sql.runtime;"
-        "import pw_locker_sql.schema.manager;"
-        "import pw_locker_sql.services"
-        ";assert 'pyodbc' not in sys.modules"
-        ";assert 'pyperclip' not in sys.modules"
-        ";assert 'dotenv' not in sys.modules"
+        f"modules={modules!r}"
+        "\nfor current_module in modules:\n    __import__(current_module)\n"
+        "assert 'pyodbc' not in sys.modules\n"
+        "assert 'pyperclip' not in sys.modules\n"
+        "assert 'dotenv' not in sys.modules\n"
+        "assert 'argon2' not in sys.modules\n"
+        "assert 'cryptography' not in sys.modules"
     )
     environment = isolated_subprocess_environment(
         {
@@ -131,7 +138,13 @@ def test_subprocess_environment_preserves_host_and_removes_sensitive_opt_ins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SYSTEMROOT", "SYNTHETIC_WINDOWS_SYSTEM_ROOT")
+    monkeypatch.setenv("USERNAME", "SYNTHETIC_WINDOWS_USER")
     monkeypatch.setenv("PYTEST_ADDOPTS", "--run-sqlserver-integration")
+    monkeypatch.setenv("PYTHONPATH", "SYNTHETIC_INJECTION_PATH")
+    monkeypatch.setenv("PYTHONWARNINGS", "SYNTHETIC_WARNING_FILTER")
+    monkeypatch.setenv("DATABASE_URL", "SYNTHETIC_DATABASE_CONFIGURATION")
+    monkeypatch.setenv("ODBC_CONNECTION_STRING", "SYNTHETIC_CONNECTION_CONFIGURATION")
+    monkeypatch.setenv("SERVICE_ACCESS_TOKEN", "SYNTHETIC_CREDENTIAL_VALUE")
     for name in ENVIRONMENT_KEY_MAP:
         monkeypatch.setenv(name, "SYNTHETIC_CONFIGURATION_VALUE")
 
@@ -143,7 +156,13 @@ def test_subprocess_environment_preserves_host_and_removes_sensitive_opt_ins(
     )
 
     assert environment["SYSTEMROOT"] == "SYNTHETIC_WINDOWS_SYSTEM_ROOT"
+    assert environment["USERNAME"] == "SYNTHETIC_WINDOWS_USER"
     assert "PYTEST_ADDOPTS" not in environment
+    assert "PYTHONPATH" not in environment
+    assert "PYTHONWARNINGS" not in environment
+    assert "DATABASE_URL" not in environment
+    assert "ODBC_CONNECTION_STRING" not in environment
+    assert "SERVICE_ACCESS_TOKEN" not in environment
     assert set(ENVIRONMENT_KEY_MAP).isdisjoint(environment)
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert environment["PYTHONIOENCODING"] == "utf-8"
