@@ -103,6 +103,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -122,6 +124,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+.ruff_cache/
 .dmypy.json
 dmypy.json
 
@@ -133,8 +136,23 @@ dmypy.json
 *Db.*
 
 /users.db
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.bak
+*.bkp
+*.backup
 /file.bin
 /ev.bin
 *.sql
+!src/pw_locker_sql/schema/migrations/*.sql
+*.exe
+*.msi
 .idea/
 .idea/workspace.xml

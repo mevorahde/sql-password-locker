@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from pw_locker_sql import cli
+from pw_locker_sql.runtime import ENVIRONMENT_KEY_MAP
+from tests.subprocess_environment import isolated_subprocess_environment
+
+
+def test_cli_help_has_no_external_requirements(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    output = capsys.readouterr()
+    assert "Client-side encrypted SQL Server password vault" in output.out
+    assert output.err == ""
+
+
+def test_no_command_prints_help_without_loading_configuration(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main([]) == cli.EXIT_OK
+    output = capsys.readouterr()
+    assert "check-config" in output.out
+    assert output.err == ""
+
+
+def test_help_does_not_import_production_integrations(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "src"
+    script = (
+        "import sys;"
+        f"sys.path.insert(0, {str(source)!r});"
+        "from pw_locker_sql import cli;"
+        "assert cli.main(['--help']) == 0;"
+        "forbidden = {'argon2', 'cryptography', 'dotenv', 'pyodbc', 'pyperclip'};"
+        "assert forbidden.isdisjoint(sys.modules)"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=tmp_path,
+        env=isolated_subprocess_environment(
+            {
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONIOENCODING": "utf-8",
+            }
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0
+    assert "check-config" in completed.stdout
+    assert completed.stderr == ""
+
+
+def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "src"
+    audit_guard = """def guard(event, args):
+    if event == "open" and isinstance(args[1], str) and any(flag in args[1] for flag in "wax+"):
+        raise RuntimeError("filesystem write blocked")
+    if event == "open" and str(args[0]).lower().endswith((".env", ".db", ".log")):
+        raise RuntimeError("protected read blocked")
+    if event in {"os.mkdir", "os.remove", "os.rename", "os.replace", "subprocess.Popen"}:
+        raise RuntimeError(f"blocked audit event: {event}; import: {current_module}")
+    if event in {
+        "socket.bind",
+        "socket.connect",
+        "socket.connect_ex",
+        "socket.getaddrinfo",
+        "socket.gethostbyaddr",
+        "socket.gethostbyname",
+    }:
+        raise RuntimeError("network side effect blocked")
+"""
+    modules = (
+        "pw_locker_sql",
+        "pw_locker_sql.cli",
+        "pw_locker_sql.clipboard",
+        "pw_locker_sql.config",
+        "pw_locker_sql.crypto.argon2_aesgcm",
+        "pw_locker_sql.crypto.protocol",
+        "pw_locker_sql.domain",
+        "pw_locker_sql.gui.controller",
+        "pw_locker_sql.gui.app",
+        "pw_locker_sql.gui.icon",
+        "pw_locker_sql.gui.operations",
+        "pw_locker_sql.gui.presenter",
+        "pw_locker_sql.gui.view",
+        "pw_locker_sql.repositories.memory",
+        "pw_locker_sql.repositories.sql_server",
+        "pw_locker_sql.prompting",
+        "pw_locker_sql.runtime",
+        "pw_locker_sql.schema.manager",
+        "pw_locker_sql.services",
+    )
+    script = (
+        "import sys;"
+        f"sys.path.insert(0, {str(source)!r});"
+        "current_module='<audit setup>';"
+        f"exec({audit_guard!r});"
+        "sys.addaudithook(guard);"
+        f"modules={modules!r}"
+        "\nfor current_module in modules:\n    __import__(current_module)\n"
+        "assert 'pyodbc' not in sys.modules\n"
+        "assert 'pyperclip' not in sys.modules\n"
+        "assert 'dotenv' not in sys.modules\n"
+        "assert 'argon2' not in sys.modules\n"
+        "assert 'cryptography' not in sys.modules"
+    )
+    environment = isolated_subprocess_environment(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "STAGE2_SENTINEL": "ENVIRONMENT_VALUE_MUST_NOT_APPEAR",
+        }
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+    application_artifacts = [path for path in tmp_path.iterdir() if path.name != "_norton_"]
+    assert application_artifacts == []
+
+
+def test_subprocess_environment_preserves_host_and_removes_sensitive_opt_ins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SYSTEMROOT", "SYNTHETIC_WINDOWS_SYSTEM_ROOT")
+    monkeypatch.setenv("USERNAME", "SYNTHETIC_WINDOWS_USER")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--run-sqlserver-integration")
+    monkeypatch.setenv("PYTHONPATH", "SYNTHETIC_INJECTION_PATH")
+    monkeypatch.setenv("PYTHONWARNINGS", "SYNTHETIC_WARNING_FILTER")
+    monkeypatch.setenv("DATABASE_URL", "SYNTHETIC_DATABASE_CONFIGURATION")
+    monkeypatch.setenv("ODBC_CONNECTION_STRING", "SYNTHETIC_CONNECTION_CONFIGURATION")
+    monkeypatch.setenv("SERVICE_ACCESS_TOKEN", "SYNTHETIC_CREDENTIAL_VALUE")
+    for name in ENVIRONMENT_KEY_MAP:
+        monkeypatch.setenv(name, "SYNTHETIC_CONFIGURATION_VALUE")
+
+    environment = isolated_subprocess_environment(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+        }
+    )
+
+    assert environment["SYSTEMROOT"] == "SYNTHETIC_WINDOWS_SYSTEM_ROOT"
+    assert environment["USERNAME"] == "SYNTHETIC_WINDOWS_USER"
+    assert "PYTEST_ADDOPTS" not in environment
+    assert "PYTHONPATH" not in environment
+    assert "PYTHONWARNINGS" not in environment
+    assert "DATABASE_URL" not in environment
+    assert "ODBC_CONNECTION_STRING" not in environment
+    assert "SERVICE_ACCESS_TOKEN" not in environment
+    assert set(ENVIRONMENT_KEY_MAP).isdisjoint(environment)
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert environment["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_runtime_package_has_no_gui_or_implicit_environment_loading() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
+    source = "\n".join(path.read_text(encoding="utf-8") for path in root.rglob("*.py"))
+    for forbidden in (
+        "load_dotenv",
+        "logging.basicConfig",
+        "sqlite3",
+    ):
+        assert forbidden not in source
+    non_gui_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+        if "gui" not in path.parts
+    )
+    assert "tkinter" not in non_gui_source
+
+
+def test_pyodbc_is_only_loaded_lazily() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "pw_locker_sql"
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                assert all(alias.name != "pyodbc" for alias in node.names)
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "pyodbc"
