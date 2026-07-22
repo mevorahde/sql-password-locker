@@ -136,7 +136,7 @@ after 30 seconds.
 
 ### GUI preview
 
-> Screenshot reserved for a future approved, non-sensitive GUI capture.
+![SQL Password Locker GUI showing three synthetic example accounts](docs/images/sql-password-locker-gui.png)
 
 ## Testing and development
 
