@@ -28,6 +28,10 @@ from pw_locker_sql.errors import (
     VaultAlreadyInitializedError,
     VaultNotInitializedError,
 )
+from pw_locker_sql.repositories.datetimeoffset import (
+    OutputConverterConnection,
+    register_sql_server_datetimeoffset_converter,
+)
 
 VAULT_TABLE = "dbo.PasswordLockerVault"
 CREDENTIAL_TABLE = "dbo.PasswordLockerCredential"
@@ -152,6 +156,10 @@ class DbApiConnection(Protocol):
     def close(self) -> None: ...
 
 
+class OdbcConnection(DbApiConnection, OutputConverterConnection, Protocol):
+    """DB-API connection with pyodbc output-converter registration."""
+
+
 class OdbcConnector(Protocol):
     def connect(
         self,
@@ -159,7 +167,7 @@ class OdbcConnector(Protocol):
         *,
         autocommit: bool,
         timeout: int,
-    ) -> DbApiConnection: ...
+    ) -> OdbcConnection: ...
 
 
 class _PyodbcConnector:
@@ -171,14 +179,14 @@ class _PyodbcConnector:
         *,
         autocommit: bool,
         timeout: int,
-    ) -> DbApiConnection:
+    ) -> OdbcConnection:
         module = importlib.import_module("pyodbc")
         connection = module.connect(
             connection_string,
             autocommit=autocommit,
             timeout=timeout,
         )
-        return cast(DbApiConnection, connection)
+        return cast(OdbcConnection, connection)
 
 
 class SqlServerConnectionFactory:
@@ -193,15 +201,20 @@ class SqlServerConnectionFactory:
         self._connector = connector or _PyodbcConnector()
 
     def __call__(self) -> DbApiConnection:
+        connection: OdbcConnection | None = None
         try:
-            return self._connector.connect(
+            connection = self._connector.connect(
                 _build_connection_string(self._config),
                 autocommit=False,
                 timeout=self._config.connection_timeout,
             )
+            register_sql_server_datetimeoffset_converter(connection)
+            return connection
         except PasswordLockerError:
+            _safe_close(connection)
             raise
         except Exception:
+            _safe_close(connection)
             raise RepositoryError() from None
 
     def __repr__(self) -> str:

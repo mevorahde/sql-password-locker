@@ -79,6 +79,10 @@ class FakeConnection:
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
+        self.output_converters: list[tuple[int, object]] = []
+
+    def add_output_converter(self, sqltype: int, func: object) -> None:
+        self.output_converters.append((sqltype, func))
 
     def cursor(self) -> FakeCursor:
         return self.fake_cursor
@@ -223,6 +227,8 @@ def test_connection_factory_is_lazy_secure_and_disables_autocommit() -> None:
     assert "PWD=" not in connection_string
     assert autocommit is False
     assert timeout == 15
+    assert len(connection.output_converters) == 1
+    assert connection.output_converters[0][0] == -155
 
 
 def test_sql_auth_connection_string_quotes_password_and_excludes_integrated_auth() -> None:
