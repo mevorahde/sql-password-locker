@@ -22,7 +22,7 @@ dependencies = [
 dev = [
     "mypy>=1.13,<2",
     "PyYAML>=6.0.2,<7",
-    "pytest>=8.3,<9",
+    "pytest>=8.3,<10",
     "ruff>=0.9,<1",
     "tomli>=2.2,<3; python_version < '3.11'",
 ]
