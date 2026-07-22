@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from pw_locker_sql import cli
+from pw_locker_sql.runtime import ENVIRONMENT_KEY_MAP
+from tests.subprocess_environment import isolated_subprocess_environment
 
 
 def test_cli_help_has_no_external_requirements(capsys: pytest.CaptureFixture[str]) -> None:
@@ -40,11 +41,12 @@ def test_help_does_not_import_production_integrations(tmp_path: Path) -> None:
     completed = subprocess.run(
         [sys.executable, "-B", "-c", script],
         cwd=tmp_path,
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
+        env=isolated_subprocess_environment(
+            {
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONIOENCODING": "utf-8",
+            }
+        ),
         capture_output=True,
         text=True,
         check=False,
@@ -102,12 +104,13 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         ";assert 'pyperclip' not in sys.modules"
         ";assert 'dotenv' not in sys.modules"
     )
-    environment = {
-        "PATH": os.environ.get("PATH", ""),
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "STAGE2_SENTINEL": "ENVIRONMENT_VALUE_MUST_NOT_APPEAR",
-    }
+    environment = isolated_subprocess_environment(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "STAGE2_SENTINEL": "ENVIRONMENT_VALUE_MUST_NOT_APPEAR",
+        }
+    )
     completed = subprocess.run(
         [sys.executable, "-B", "-c", script],
         cwd=tmp_path,
@@ -122,6 +125,28 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
     assert completed.stderr == ""
     application_artifacts = [path for path in tmp_path.iterdir() if path.name != "_norton_"]
     assert application_artifacts == []
+
+
+def test_subprocess_environment_preserves_host_and_removes_sensitive_opt_ins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SYSTEMROOT", "SYNTHETIC_WINDOWS_SYSTEM_ROOT")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--run-sqlserver-integration")
+    for name in ENVIRONMENT_KEY_MAP:
+        monkeypatch.setenv(name, "SYNTHETIC_CONFIGURATION_VALUE")
+
+    environment = isolated_subprocess_environment(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+        }
+    )
+
+    assert environment["SYSTEMROOT"] == "SYNTHETIC_WINDOWS_SYSTEM_ROOT"
+    assert "PYTEST_ADDOPTS" not in environment
+    assert set(ENVIRONMENT_KEY_MAP).isdisjoint(environment)
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert environment["PYTHONIOENCODING"] == "utf-8"
 
 
 def test_runtime_package_has_no_gui_or_implicit_environment_loading() -> None:

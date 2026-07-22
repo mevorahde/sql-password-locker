@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +9,7 @@ import pytest
 
 from pw_locker_sql.gui import app
 from pw_locker_sql.gui.view import TkVaultView
+from tests.subprocess_environment import isolated_subprocess_environment
 
 
 def test_gui_imports_have_no_side_effects(tmp_path: Path) -> None:
@@ -44,11 +44,12 @@ def test_gui_imports_have_no_side_effects(tmp_path: Path) -> None:
     completed = subprocess.run(
         [sys.executable, "-B", "-c", script],
         cwd=tmp_path,
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
+        env=isolated_subprocess_environment(
+            {
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONIOENCODING": "utf-8",
+            }
+        ),
         capture_output=True,
         text=True,
         check=False,
