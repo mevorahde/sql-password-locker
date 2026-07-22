@@ -62,6 +62,17 @@ def test_gitignore_protects_local_configuration_but_tracks_template() -> None:
     assert {".env", ".env.*", "!.env.example"} <= entries
 
 
+def test_superseded_root_artifacts_are_absent() -> None:
+    legacy_paths = {
+        "favicon.ico",
+        "pw.bat",
+        "pw.py",
+        "pw_locker.pyw",
+        "requirements.txt",
+    }
+    assert not {path for path in legacy_paths if (ROOT / path).exists()}
+
+
 def test_project_uses_spdx_license_and_declares_distribution_resources() -> None:
     project = tomllib.loads(_text("pyproject.toml"))
     assert project["project"]["license"] == "MIT"
