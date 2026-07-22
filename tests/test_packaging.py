@@ -98,7 +98,7 @@ def test_ci_is_least_privilege_windows_matrix_and_never_opts_into_live_sql() -> 
     assert job["strategy"]["matrix"]["python-version"] == ["3.10", "3.13"]
     rendered = _text(".github/workflows/ci.yml")
     assert "actions/checkout@v7" in rendered
-    assert "actions/setup-python@v6" in rendered
+    assert "actions/setup-python@v7" in rendered
     assert "not sqlserver_integration" in rendered
     assert "--run-sqlserver-integration" not in rendered
     for command in ("pip check", "compileall", "ruff check", "mypy", "pytest"):
