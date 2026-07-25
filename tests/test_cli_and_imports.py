@@ -93,6 +93,7 @@ def test_imports_create_no_files_or_external_connections(tmp_path: Path) -> None
         "pw_locker_sql.repositories.memory",
         "pw_locker_sql.repositories.sql_server",
         "pw_locker_sql.prompting",
+        "pw_locker_sql.pwsql",
         "pw_locker_sql.runtime",
         "pw_locker_sql.schema.manager",
         "pw_locker_sql.services",

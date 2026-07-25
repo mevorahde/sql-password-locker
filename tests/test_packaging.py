@@ -80,6 +80,7 @@ def test_project_uses_spdx_license_and_declares_distribution_resources() -> None
     assert project["project"]["scripts"] == {
         "pw-locker-sql": "pw_locker_sql.cli:main",
         "pw-locker-sql-gui": "pw_locker_sql.gui.app:main",
+        "pwsql": "pw_locker_sql.pwsql:main",
     }
     package_data = project["tool"]["setuptools"]["package-data"]
     assert package_data["pw_locker_sql.assets"] == ["*.png", "*.ico"]
