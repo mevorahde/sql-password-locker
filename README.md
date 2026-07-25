@@ -72,6 +72,17 @@ For development tools, install the bounded optional dependency set instead:
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
+Installation creates the `pw-locker-sql`, `pwsql`, and `pw-locker-sql-gui` console scripts in
+the selected Python environment's `Scripts` directory. Windows can resolve `pwsql` from Win+R
+only when that directory is on the invoking user's `PATH`. Cloning the repository merely copies
+source files; it neither installs these console scripts nor changes `PATH`.
+
+For regular use, choose a user-scoped or otherwise managed Python installation and expose its
+console-script directory through the normal Windows user `PATH` settings. The project
+`.venv\Scripts` directory above is a development environment: invoke its executables explicitly
+or activate it for a development shell, but do not permanently add that project-specific
+directory to `PATH`.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and replace its unmistakable placeholders. The default `.env`
@@ -102,6 +113,23 @@ pw-locker-sql --env-file .env.example check-config
 The last command demonstrates explicit file selection and validates only the placeholder syntax;
 `check-config` never tests SQL connectivity. Never commit a populated configuration file.
 
+By default, configuration loading looks for `.env` in the process's current working directory,
+not in the installed package or automatically in the source repository. Win+R may launch the
+command with a different working directory, so a repository `.env` is not reliably discovered.
+For use outside the repository, define the recognized process/user environment variables and
+use `--no-env-file`, or select a protected dotenv file explicitly with `--env-file`. The
+configuration option must precede the account name:
+
+```powershell
+pwsql --no-env-file "Apple ID"
+pwsql --env-file "path\to\vault.env" "Apple ID"
+```
+
+The explicit path is supplied at launch and is not stored by the application. These
+configuration sources may contain SQL connection settings, including a dedicated SQL login
+password when SQL authentication is selected; they must never contain the vault master password
+or any stored credential.
+
 ## Command-line interface
 
 Passwords are collected through an interactive, non-echoing terminal prompt; they are never
@@ -117,8 +145,25 @@ pw-locker-sql delete "example account"
 pw-locker-sql delete "example account" --yes
 ```
 
-`init` applies the version-1 schema and creates one encrypted vault. `copy` waits between 5 and
-300 seconds, then clears the clipboard only if its content still matches the copied password.
+The standard copy command and its Windows-friendly short alias are:
+
+```powershell
+pw-locker-sql copy ACCOUNT
+pwsql ACCOUNT
+
+pwsql iTunes
+pwsql "Apple ID"
+pwsql "Apple ID" --clear-after 30
+```
+
+`pwsql` is only a compatibility adapter for `pw-locker-sql copy`: it prompts interactively for
+the master password and never displays the retrieved credential. The credential is copied to
+the clipboard, and after the requested delay (30 seconds by default) the clipboard is cleared
+only if it still contains that same credential. Newer clipboard content is preserved.
+
+`init` applies the version-1 schema and creates one encrypted vault. Copy delays must be between
+5 and 300 seconds. The separate SQLite Password Locker uses the `pw` command; SQL Password
+Locker uses `pwsql`.
 
 ## Desktop GUI
 
