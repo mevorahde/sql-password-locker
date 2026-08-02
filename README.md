@@ -72,10 +72,11 @@ For development tools, install the bounded optional dependency set instead:
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Installation creates the `pw-locker-sql`, `pwsql`, and `pw-locker-sql-gui` console scripts in
-the selected Python environment's `Scripts` directory. Windows can resolve `pwsql` from Win+R
-only when that directory is on the invoking user's `PATH`. Cloning the repository merely copies
-source files; it neither installs these console scripts nor changes `PATH`.
+Installation creates the `pw-locker-sql` and `pwsql` console commands and the
+`pw-locker-sql-gui` Windows GUI launcher in the selected Python environment's `Scripts`
+directory. Windows can resolve a command from Win+R only when that directory is on the invoking
+user's `PATH`. Cloning the repository merely copies source files; it neither installs these
+launchers nor changes `PATH`.
 
 For regular use, choose a user-scoped or otherwise managed Python installation and expose its
 console-script directory through the normal Windows user `PATH` settings. The project
@@ -100,6 +101,35 @@ The runtime recognizes only these environment or dotenv names:
 | `PW_LOCKER_SQL_PASSWORD` | Required only for `sql` authentication |
 | `PW_LOCKER_SQL_DRIVER` | Optional ODBC driver name; defaults to Driver 18 |
 | `PW_LOCKER_SQL_CONNECT_TIMEOUT` | Optional connection timeout from 1 to 120 seconds |
+
+Legacy configuration names and aliases are unsupported. Use the exact `PW_LOCKER_SQL_*` names
+above.
+
+For Windows integrated authentication, a dotenv file can contain placeholder values like these:
+
+```dotenv
+PW_LOCKER_SQL_SERVER=YOUR_SQL_SERVER
+PW_LOCKER_SQL_DATABASE=YOUR_EXISTING_DATABASE
+PW_LOCKER_SQL_AUTH_MODE=integrated
+PW_LOCKER_SQL_DRIVER=ODBC Driver 18 for SQL Server
+PW_LOCKER_SQL_CONNECT_TIMEOUT=10
+```
+
+For SQL authentication, use placeholders for the dedicated SQL login as well:
+
+```dotenv
+PW_LOCKER_SQL_SERVER=YOUR_SQL_SERVER
+PW_LOCKER_SQL_DATABASE=YOUR_EXISTING_DATABASE
+PW_LOCKER_SQL_AUTH_MODE=sql
+PW_LOCKER_SQL_USERNAME=YOUR_SQL_USERNAME
+PW_LOCKER_SQL_PASSWORD=YOUR_SQL_PASSWORD
+PW_LOCKER_SQL_DRIVER=ODBC Driver 18 for SQL Server
+PW_LOCKER_SQL_CONNECT_TIMEOUT=10
+```
+
+SQL Server and the target database must already exist before either configuration is useful.
+The application creates its tables inside that database; it does not create SQL Server or the
+database itself.
 
 Process environment variables override values from the selected dotenv file. Dotenv
 interpolation is disabled. Validate configuration without making a database connection:
@@ -161,17 +191,34 @@ the master password and never displays the retrieved credential. The credential 
 the clipboard, and after the requested delay (30 seconds by default) the clipboard is cleared
 only if it still contains that same credential. Newer clipboard content is preserved.
 
-`init` applies the version-1 schema and creates one encrypted vault. Copy delays must be between
-5 and 300 seconds. The separate SQLite Password Locker uses the `pw` command; SQL Password
-Locker uses `pwsql`.
+To initialize the existing target database and create its first vault, run:
+
+```powershell
+pw-locker-sql init
+```
+
+`init` applies the version-1 schema, prompts for the new vault's master password without echoing
+it, and creates one encrypted vault. Run it once for a new target database. Copy delays must be
+between 5 and 300 seconds. The separate SQLite Password Locker uses the `pw` command; SQL
+Password Locker uses `pwsql`.
 
 ## Desktop GUI
 
-Launch the installed Tkinter entry point:
+After a regular installation, launch the Tkinter application with:
 
 ```powershell
 pw-locker-sql-gui
 ```
+
+After the editable source installation shown above, either activate `.venv` and use the same
+command, or invoke its launcher explicitly:
+
+```powershell
+.\.venv\Scripts\pw-locker-sql-gui.exe
+```
+
+On Windows this is installed as a GUI launcher, so starting it does not open a terminal window.
+The `pw-locker-sql` and `pwsql` commands remain terminal-based CLI launchers.
 
 The GUI supports vault creation and unlocking, account refresh, credential creation and update,
 copy, deletion, and explicit locking. SQL and cryptographic work runs on one bounded background
