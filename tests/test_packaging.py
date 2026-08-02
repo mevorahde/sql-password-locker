@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import configparser
+import io
 import re
+import subprocess
+import sys
+import zipfile
 from pathlib import Path
 
 import yaml
@@ -11,6 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised by the Python 3.10 C
     import tomli as tomllib
 
 from pw_locker_sql.runtime import ENVIRONMENT_KEY_MAP
+from tests.subprocess_environment import isolated_subprocess_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,8 +85,10 @@ def test_project_uses_spdx_license_and_declares_distribution_resources() -> None
     assert project["project"]["license-files"] == ["LICENSE"]
     assert project["project"]["scripts"] == {
         "pw-locker-sql": "pw_locker_sql.cli:main",
-        "pw-locker-sql-gui": "pw_locker_sql.gui.app:main",
         "pwsql": "pw_locker_sql.pwsql:main",
+    }
+    assert project["project"]["gui-scripts"] == {
+        "pw-locker-sql-gui": "pw_locker_sql.gui.app:main",
     }
     package_data = project["tool"]["setuptools"]["package-data"]
     assert package_data["pw_locker_sql.assets"] == ["*.png", "*.ico"]
@@ -89,6 +97,56 @@ def test_project_uses_spdx_license_and_declares_distribution_resources() -> None
         "optional-dependencies"
     ]["dev"]:
         assert ">=" in requirement and "<" in requirement
+
+
+def test_wheel_metadata_preserves_console_and_gui_entry_point_groups(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "pip",
+            "wheel",
+            "--no-build-isolation",
+            "--no-deps",
+            "--wheel-dir",
+            str(tmp_path),
+            str(ROOT),
+        ],
+        cwd=tmp_path,
+        env=isolated_subprocess_environment(
+            {
+                "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONIOENCODING": "utf-8",
+            }
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    wheels = list(tmp_path.glob("*.whl"))
+    assert len(wheels) == 1
+
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        entry_point_files = [
+            name for name in wheel.namelist() if name.endswith(".dist-info/entry_points.txt")
+        ]
+        assert len(entry_point_files) == 1
+        entry_points = wheel.read(entry_point_files[0]).decode("utf-8")
+
+    metadata = configparser.ConfigParser(interpolation=None)
+    metadata.optionxform = str
+    metadata.read_file(io.StringIO(entry_points))
+    assert dict(metadata["console_scripts"]) == {
+        "pw-locker-sql": "pw_locker_sql.cli:main",
+        "pwsql": "pw_locker_sql.pwsql:main",
+    }
+    assert dict(metadata["gui_scripts"]) == {
+        "pw-locker-sql-gui": "pw_locker_sql.gui.app:main",
+    }
 
 
 def test_ci_is_least_privilege_windows_matrix_and_never_opts_into_live_sql() -> None:

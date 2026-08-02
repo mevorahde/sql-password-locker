@@ -29,8 +29,10 @@ dev = [
 
 [project.scripts]
 pw-locker-sql = "pw_locker_sql.cli:main"
-pw-locker-sql-gui = "pw_locker_sql.gui.app:main"
 pwsql = "pw_locker_sql.pwsql:main"
+
+[project.gui-scripts]
+pw-locker-sql-gui = "pw_locker_sql.gui.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
