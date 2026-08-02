@@ -24,6 +24,7 @@ dev = [
     "PyYAML>=6.0.2,<7",
     "pytest>=8.3,<10",
     "ruff>=0.9,<1",
+    "setuptools>=77,<84",
     "tomli>=2.2,<3; python_version < '3.11'",
 ]
 
